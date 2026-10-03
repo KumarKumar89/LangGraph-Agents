@@ -1,12 +1,18 @@
 import os
-from typing import TypedDict, Annotated, List
+from typing import Annotated, Any, List, TypedDict
+
 from langchain_core.messages import (
-    AnyMessage, SystemMessage, HumanMessage, ToolMessage, messages_from_dict
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    messages_from_dict,
 )
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.graph import END, StateGraph
+from langgraph.prebuilt import ToolNode
 from dotenv import load_dotenv
 
 # Optional: wrap Tavily import so it doesn't break during Studio load
@@ -40,9 +46,7 @@ def search_tool(query: str):
 
 @tool
 def write_report_tool(content: str, filename: str = "research_report.md"):
-    """
-    Writes the given content to a markdown file.
-    """
+    """Writes the given content to a markdown file."""
     print(f"--- WRITING REPORT: {filename} ---")
     with open(filename, "w", encoding="utf-8") as f:
         f.write(content)
@@ -67,16 +71,15 @@ model_with_tools = model.bind_tools(tools)
 
 
 # --- 5. Helper Function ---
-def normalize_messages(messages):
+def normalize_messages(messages: List[Any]) -> List[AnyMessage]:
     """Ensure all messages are LangChain Message objects."""
-    normalized = []
+    normalized: List[AnyMessage] = []
     for msg in messages:
-        if isinstance(msg, (HumanMessage, SystemMessage, ToolMessage)):
+        if isinstance(msg, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
             normalized.append(msg)
         else:
-            # Convert dict-like messages to LC message objects
             try:
-                normalized.append(messages_from_dict([msg])[0])
+                normalized.extend(messages_from_dict([msg]))
             except Exception:
                 normalized.append(HumanMessage(content=str(msg)))
     return normalized
@@ -107,7 +110,6 @@ def response_synthesizer_node(state: AgentState):
     print("--- SYNTHESIZING RESPONSE ---")
     state["messages"] = normalize_messages(state["messages"])
 
-    # Extract content safely
     first_message = state["messages"][0]
     last_message = state["messages"][-1]
     user_request = getattr(first_message, "content", str(first_message))
@@ -120,7 +122,7 @@ def response_synthesizer_node(state: AgentState):
         "After writing, call the `write_report_tool` to save it."
     )
 
-    response = model_with_tools.invoke(synthesis_prompt)
+    response = model_with_tools.invoke([HumanMessage(content=synthesis_prompt)])
     return {"messages": [response]}
 
 
@@ -137,7 +139,7 @@ def router_node(state: AgentState):
         print("✅ Route: end")
         return "end"
 
-    elif hasattr(last_message, "tool_calls") and last_message.tool_calls:
+    if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
         print("➡️ Route: tools")
         return "tools"
 
