@@ -1,0 +1,9 @@
+{
+    "dependencies": [
+        "."
+    ],
+    "graphs": {
+        "app": "app:create_compiled_graph"
+    },
+    "env": ".env"
+}
